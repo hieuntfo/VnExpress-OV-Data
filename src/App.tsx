@@ -62,7 +62,7 @@ interface DataEntry {
   totalClick: number;
 }
 
-type FilterPreset = 'latest' | 'last3' | 'last7' | 'last30' | 'quarter' | 'custom';
+type FilterPreset = 'latest' | 'last3' | 'last7' | 'last30' | 'quarter' | 'custom' | 'compare';
 
 export default function App() {
   const [data, setData] = useState<DataEntry[]>([]);
@@ -71,6 +71,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [preset, setPreset] = useState<FilterPreset>('last30');
   const [customRange, setCustomRange] = useState<{from: string, to: string}>({ from: '', to: '' });
+  const [compareRange1, setCompareRange1] = useState<{from: string, to: string}>({ from: '', to: '' });
+  const [compareRange2, setCompareRange2] = useState<{from: string, to: string}>({ from: '', to: '' });
 
   useEffect(() => {
     fetchData();
@@ -165,6 +167,14 @@ export default function App() {
             setCustomRange({
               from: format(minDate, 'yyyy-MM-dd'),
               to: format(maxDate, 'yyyy-MM-dd')
+            });
+            setCompareRange1({
+              from: format(subDays(maxDate, 29), 'yyyy-MM-dd'),
+              to: format(maxDate, 'yyyy-MM-dd')
+            });
+            setCompareRange2({
+              from: format(subDays(maxDate, 59), 'yyyy-MM-dd'),
+              to: format(subDays(maxDate, 30), 'yyyy-MM-dd')
             });
           }
         }
@@ -266,6 +276,80 @@ export default function App() {
     };
   }, [filteredData, prevTotalPC, prevTotalMobile, prevTotalAll]);
 
+  // Derived comparison data
+  const compData = useMemo(() => {
+    if (preset !== 'compare') return null;
+    if (!compareRange1.from || !compareRange1.to || !compareRange2.from || !compareRange2.to) return null;
+
+    const from1 = startOfDay(parse(compareRange1.from, 'yyyy-MM-dd', new Date()));
+    const to1 = endOfDay(parse(compareRange1.to, 'yyyy-MM-dd', new Date()));
+    const from2 = startOfDay(parse(compareRange2.from, 'yyyy-MM-dd', new Date()));
+    const to2 = endOfDay(parse(compareRange2.to, 'yyyy-MM-dd', new Date()));
+
+    const data1 = data.filter(item => item.date.getTime() >= from1.getTime() && item.date.getTime() <= to1.getTime());
+    const data2 = data.filter(item => item.date.getTime() >= from2.getTime() && item.date.getTime() <= to2.getTime());
+
+    const totalPC1 = data1.reduce((acc, curr) => acc + curr.clickPC, 0);
+    const totalMobile1 = data1.reduce((acc, curr) => acc + curr.clickMobile, 0);
+    const totalAll1 = totalPC1 + totalMobile1;
+    const avgPC1 = data1.length ? Math.round(totalPC1 / data1.length) : 0;
+    const avgMobile1 = data1.length ? Math.round(totalMobile1 / data1.length) : 0;
+    const avgAll1 = data1.length ? Math.round(totalAll1 / data1.length) : 0;
+
+    const totalPC2 = data2.reduce((acc, curr) => acc + curr.clickPC, 0);
+    const totalMobile2 = data2.reduce((acc, curr) => acc + curr.clickMobile, 0);
+    const totalAll2 = totalPC2 + totalMobile2;
+    const avgPC2 = data2.length ? Math.round(totalPC2 / data2.length) : 0;
+    const avgMobile2 = data2.length ? Math.round(totalMobile2 / data2.length) : 0;
+    const avgAll2 = data2.length ? Math.round(totalAll2 / data2.length) : 0;
+
+    const calcTrend = (current: number, past: number) => {
+      if (!past) return 0;
+      return ((current - past) / past) * 100;
+    };
+
+    const maxLength = Math.max(data1.length, data2.length);
+    const chartData = [];
+    for (let i = 0; i < maxLength; i++) {
+       chartData.push({
+          dayIndex: `Ngày ${i + 1}`,
+          date1: data1[i]?.dateStr || '-',
+          date2: data2[i]?.dateStr || '-',
+          total1: data1[i]?.totalClick || 0,
+          total2: data2[i]?.totalClick || 0,
+          pc1: data1[i]?.clickPC || 0,
+          pc2: data2[i]?.clickPC || 0,
+          mobile1: data1[i]?.clickMobile || 0,
+          mobile2: data2[i]?.clickMobile || 0,
+       });
+    }
+
+    return {
+       period1: {
+         label: `${format(from1, 'dd/MM/yyyy')} - ${format(to1, 'dd/MM/yyyy')} (${data1.length} ngày)`,
+         totalAll: totalAll1,
+         totalPC: totalPC1,
+         totalMobile: totalMobile1,
+         avgAll: avgAll1,
+         avgPC: avgPC1,
+         avgMobile: avgMobile1,
+       },
+       period2: {
+         label: `${format(from2, 'dd/MM/yyyy')} - ${format(to2, 'dd/MM/yyyy')} (${data2.length} ngày)`,
+         totalAll: totalAll2,
+         totalPC: totalPC2,
+         totalMobile: totalMobile2,
+         avgAll: avgAll2,
+         avgPC: avgPC2,
+         avgMobile: avgMobile2,
+       },
+       trendAll: calcTrend(totalAll1, totalAll2),
+       trendPC: calcTrend(totalPC1, totalPC2),
+       trendMobile: calcTrend(totalMobile1, totalMobile2),
+       chartData
+    };
+  }, [data, preset, compareRange1, compareRange2]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
@@ -324,6 +408,7 @@ export default function App() {
                 { id: 'last30', label: '1 Tháng' },
                 { id: 'quarter', label: '1 Quý (90N)' },
                 { id: 'custom', label: 'Tuỳ chọn' },
+                { id: 'compare', label: 'So sánh' },
               ] as const
             ).map((p) => (
               <button
@@ -341,7 +426,7 @@ export default function App() {
           </div>
 
           {preset === 'custom' && (
-            <div className="flex items-center gap-2 text-sm bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-2 text-sm bg-slate-50 p-2 rounded-lg border border-slate-200 mt-4 md:mt-0">
               <input
                 type="date"
                 value={customRange.from}
@@ -357,11 +442,155 @@ export default function App() {
               />
             </div>
           )}
+          
+          {preset === 'compare' && (
+            <div className="flex flex-col gap-2 mt-4 xl:mt-0">
+               <div className="flex items-center gap-2 text-sm bg-slate-50 p-2 rounded-lg border border-slate-200">
+                 <span className="font-semibold text-slate-500 w-12">Cụm 1:</span>
+                 <input
+                   type="date"
+                   value={compareRange1.from}
+                   onChange={(e) => setCompareRange1(prev => ({ ...prev, from: e.target.value }))}
+                   className="px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500 w-32"
+                 />
+                 <span className="text-slate-500">-</span>
+                 <input
+                   type="date"
+                   value={compareRange1.to}
+                   onChange={(e) => setCompareRange1(prev => ({ ...prev, to: e.target.value }))}
+                   className="px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500 w-32"
+                 />
+               </div>
+               <div className="flex items-center gap-2 text-sm bg-slate-50 p-2 rounded-lg border border-slate-200">
+                 <span className="font-semibold text-slate-500 w-12">Cụm 2:</span>
+                 <input
+                   type="date"
+                   value={compareRange2.from}
+                   onChange={(e) => setCompareRange2(prev => ({ ...prev, from: e.target.value }))}
+                   className="px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500 w-32"
+                 />
+                 <span className="text-slate-500">-</span>
+                 <input
+                   type="date"
+                   value={compareRange2.to}
+                   onChange={(e) => setCompareRange2(prev => ({ ...prev, to: e.target.value }))}
+                   className="px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500 w-32"
+                 />
+               </div>
+            </div>
+          )}
         </section>
 
-        {kpis && (
-          <>
-            {/* KPI Cards */}
+        {preset === 'compare' ? (
+          compData && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Total Click Comparision */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-800 flex items-center justify-center">
+                      <MousePointerClick className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-semibold text-slate-600">Tổng Lượt Click</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-slate-500">{compData.period1.label}</div>
+                      <div className="text-2xl font-bold text-slate-900">{compData.period1.totalAll.toLocaleString('vi-VN')}</div>
+                    </div>
+                    <div className="border-t border-slate-100 pt-3">
+                      <div className="text-xs text-slate-500">{compData.period2.label}</div>
+                      <div className="text-2xl font-bold text-slate-900">{compData.period2.totalAll.toLocaleString('vi-VN')}</div>
+                    </div>
+                  </div>
+                  <div className={`mt-4 inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full ${compData.trendAll >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                    {compData.trendAll >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                    {compData.trendAll >= 0 ? '+' : ''}{compData.trendAll.toFixed(1)}% <span className="text-xs font-normal opacity-70">so với cụm 2</span>
+                  </div>
+                </div>
+
+                {/* PC Click Comparision */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                      <Monitor className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-semibold text-slate-600">Click PC</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-slate-500">{compData.period1.label}</div>
+                      <div className="text-2xl font-bold text-slate-900">{compData.period1.totalPC.toLocaleString('vi-VN')}</div>
+                    </div>
+                    <div className="border-t border-slate-100 pt-3">
+                      <div className="text-xs text-slate-500">{compData.period2.label}</div>
+                      <div className="text-2xl font-bold text-slate-900">{compData.period2.totalPC.toLocaleString('vi-VN')}</div>
+                    </div>
+                  </div>
+                  <div className={`mt-4 inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full ${compData.trendPC >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                    {compData.trendPC >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                    {compData.trendPC >= 0 ? '+' : ''}{compData.trendPC.toFixed(1)}% <span className="text-xs font-normal opacity-70">so với cụm 2</span>
+                  </div>
+                </div>
+
+                {/* Mobile Click Comparision */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-semibold text-slate-600">Click Mobile</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-slate-500">{compData.period1.label}</div>
+                      <div className="text-2xl font-bold text-slate-900">{compData.period1.totalMobile.toLocaleString('vi-VN')}</div>
+                    </div>
+                    <div className="border-t border-slate-100 pt-3">
+                      <div className="text-xs text-slate-500">{compData.period2.label}</div>
+                      <div className="text-2xl font-bold text-slate-900">{compData.period2.totalMobile.toLocaleString('vi-VN')}</div>
+                    </div>
+                  </div>
+                  <div className={`mt-4 inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1 rounded-full ${compData.trendMobile >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                    {compData.trendMobile >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                    {compData.trendMobile >= 0 ? '+' : ''}{compData.trendMobile.toFixed(1)}% <span className="text-xs font-normal opacity-70">so với cụm 2</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Comparison Line Chart */}
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div className="mb-6">
+                  <h3 className="text-lg font-bold text-slate-900">Biểu Đồ So Sánh Tổng Clicks</h3>
+                  <p className="text-sm text-slate-500">So sánh tương quan lượng click mỗi ngày của 2 giai đoạn (theo ngày thứ 1, 2, ... của mỗi cụm)</p>
+                </div>
+                <div className="h-[400px] w-full mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={compData.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                      <XAxis dataKey="dayIndex" stroke="#64748b" fontSize={12} tickMargin={10} minTickGap={30} />
+                      <YAxis stroke="#64748b" fontSize={12} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        labelStyle={{ color: '#475569', fontWeight: 'bold', marginBottom: '8px' }}
+                        formatter={(value: number, name: string) => {
+                          const label = name === 'Cụm 1' ? 'Cụm 1' : 'Cụm 2';
+                          return [new Intl.NumberFormat('vi-VN').format(value), label];
+                        }}
+                      />
+                      <Legend verticalAlign="top" height={36}/>
+                      <Line type="monotone" dataKey="total1" name="Cụm 1" stroke="#f43f5e" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
+                      <Line type="monotone" dataKey="total2" name="Cụm 2" stroke="#94a3b8" strokeWidth={3} dot={{r: 4}} strokeDasharray="5 5" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )
+        ) : (
+          kpis && (
+            <>
+              {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Total Card */}
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col relative overflow-hidden group">
@@ -686,9 +915,9 @@ export default function App() {
                </div>
             </div>
           </>
-        )}
+        ))}
         
-        {filteredData.length === 0 && !loading && (
+        {preset !== 'compare' && filteredData.length === 0 && !loading && (
           <div className="bg-white p-12 text-center rounded-xl border border-slate-200">
             <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-slate-900">Không có dữ liệu</h3>
