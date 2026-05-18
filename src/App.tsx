@@ -73,6 +73,7 @@ export default function App() {
   const [customRange, setCustomRange] = useState<{from: string, to: string}>({ from: '', to: '' });
   const [compareRange1, setCompareRange1] = useState<{from: string, to: string}>({ from: '', to: '' });
   const [compareRange2, setCompareRange2] = useState<{from: string, to: string}>({ from: '', to: '' });
+  const [compareChartFilter, setCompareChartFilter] = useState<'all' | 'pc' | 'mobile'>('all');
 
   useEffect(() => {
     fetchData();
@@ -560,9 +561,31 @@ export default function App() {
 
               {/* Comparison Line Chart */}
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <div className="mb-6">
-                  <h3 className="text-lg font-bold text-slate-900">Biểu Đồ So Sánh Tổng Clicks</h3>
-                  <p className="text-sm text-slate-500">So sánh tương quan lượng click mỗi ngày của 2 giai đoạn (theo ngày thứ 1, 2, ... của mỗi cụm)</p>
+                <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Biểu Đồ So Sánh Clicks</h3>
+                    <p className="text-sm text-slate-500">So sánh tương quan lượng click mỗi ngày của 2 giai đoạn (theo ngày thứ 1, 2, ... của mỗi cụm)</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg self-start md:self-auto">
+                    <button
+                      onClick={() => setCompareChartFilter('all')}
+                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${compareChartFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      onClick={() => setCompareChartFilter('pc')}
+                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${compareChartFilter === 'pc' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      PC
+                    </button>
+                    <button
+                      onClick={() => setCompareChartFilter('mobile')}
+                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${compareChartFilter === 'mobile' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      Mobile
+                    </button>
+                  </div>
                 </div>
                 <div className="h-[400px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
@@ -579,8 +602,24 @@ export default function App() {
                         }}
                       />
                       <Legend verticalAlign="top" height={36}/>
-                      <Line type="monotone" dataKey="total1" name="Cụm 1" stroke="#f43f5e" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
-                      <Line type="monotone" dataKey="total2" name="Cụm 2" stroke="#94a3b8" strokeWidth={3} dot={{r: 4}} strokeDasharray="5 5" />
+                      <Line 
+                        type="monotone" 
+                        dataKey={compareChartFilter === 'all' ? 'total1' : compareChartFilter === 'pc' ? 'pc1' : 'mobile1'} 
+                        name="Cụm 1" 
+                        stroke={compareChartFilter === 'pc' ? '#2563eb' : compareChartFilter === 'mobile' ? '#10b981' : '#f43f5e'} 
+                        strokeWidth={3} 
+                        dot={{r: 4}} 
+                        activeDot={{r: 6}} 
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey={compareChartFilter === 'all' ? 'total2' : compareChartFilter === 'pc' ? 'pc2' : 'mobile2'} 
+                        name="Cụm 2" 
+                        stroke="#94a3b8" 
+                        strokeWidth={3} 
+                        dot={{r: 4}} 
+                        strokeDasharray="5 5" 
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
